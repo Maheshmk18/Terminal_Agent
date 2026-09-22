@@ -1,6 +1,12 @@
+import asyncio
 import json
+from contextlib import suppress
 
 import websockets
+from websockets.exceptions import InvalidHandshake
+
+MAX_FRAME_BYTES = 8 * 1024 * 1024
+RECONNECT_DELAYS = (0.5, 1.0, 2.0)
 
 
 class AgentClient:
@@ -9,8 +15,25 @@ class AgentClient:
         self._socket = None
 
     async def __aenter__(self) -> "AgentClient":
-        self._socket = await websockets.connect(self._url, max_size=8 * 1024 * 1024)
+        self._socket = await self._connect()
         return self
+
+    async def reconnect(self) -> bool:
+        with suppress(Exception):
+            await self._socket.close()
+
+        for delay in RECONNECT_DELAYS:
+            await asyncio.sleep(delay)
+            try:
+                self._socket = await self._connect()
+                return True
+            except (OSError, InvalidHandshake):
+                continue
+
+        return False
+
+    async def _connect(self):
+        return await websockets.connect(self._url, max_size=MAX_FRAME_BYTES)
 
     async def __aexit__(self, *exc_info) -> None:
         if self._socket is not None:

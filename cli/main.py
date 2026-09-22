@@ -2,6 +2,7 @@ import asyncio
 from uuid import uuid4
 
 import typer
+from websockets.exceptions import ConnectionClosed, InvalidHandshake
 
 from cli import display
 from cli.client import AgentClient
@@ -33,8 +34,10 @@ async def _run(url: str, thread_id: str) -> None:
     try:
         async with AgentClient(url, thread_id) as client:
             await _loop(client)
-    except OSError:
+    except (OSError, InvalidHandshake):
         display.show_error(f"Could not reach {url}, is the server running?")
+    except ConnectionClosed:
+        display.show_error("The server closed the connection, restart it and try again.")
 
 
 async def _loop(client: AgentClient) -> None:
@@ -49,7 +52,13 @@ async def _loop(client: AgentClient) -> None:
         if text.lower() in EXIT_WORDS:
             return
 
-        await _turn(client, client.send_message(text))
+        try:
+            await _turn(client, client.send_message(text))
+        except ConnectionClosed:
+            display.show_error("The server dropped the connection, reconnecting.")
+            if not await client.reconnect():
+                display.show_error("Could not reconnect, is the server running?")
+                return
 
 
 async def _turn(client: AgentClient, stream) -> None:
