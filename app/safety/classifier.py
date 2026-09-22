@@ -21,6 +21,9 @@ PIPE_SEPARATOR = "|"
 SHELL_WRAPPERS = frozenset({"powershell", "pwsh", "cmd", "bash", "sh", "zsh"})
 MAX_UNWRAP_DEPTH = 3
 
+GIT_FLAGS_WITH_VALUE = frozenset({"-C", "-c", "--git-dir", "--work-tree", "--namespace"})
+COMMAND_FLAGS = frozenset({"-command", "-c", "-file", "-f", "/c", "/k"})
+
 PYTHON_RUNNERS = frozenset({"python", "python3", "py"})
 SAFE_PYTHON_MODULES = frozenset({"pytest", "ruff", "mypy", "json.tool"})
 
@@ -66,10 +69,7 @@ def _unwrap_shell(command: str) -> str:
         if not tokens or _base_name(tokens[0]) not in SHELL_WRAPPERS:
             return command
 
-        inner = next(
-            (token for token in reversed(tokens[1:]) if not token.startswith("-")),
-            "",
-        )
+        inner = _inner_command(tokens[1:])
         if not inner:
             return command
 
@@ -139,12 +139,36 @@ def _classify_python(tokens: list[str]) -> SafetyVerdict:
 
 
 def _classify_git(tokens: list[str]) -> SafetyVerdict:
-    subcommand = next((token for token in tokens[1:] if not token.startswith("-")), "")
+    subcommand = _git_subcommand(tokens[1:])
     if subcommand in SAFE_GIT_SUBCOMMANDS:
         return SafetyVerdict(RiskLevel.SAFE, f"git {subcommand} only reads")
     if subcommand in {"push", "reset", "clean", "rebase"}:
         return SafetyVerdict(RiskLevel.DANGEROUS, f"git {subcommand} can discard or publish work")
     return SafetyVerdict(RiskLevel.CAUTION, f"git {subcommand or 'command'} changes the repository")
+
+
+def _inner_command(tokens: list[str]) -> str:
+    for index, token in enumerate(tokens):
+        if token.lower() in COMMAND_FLAGS and index + 1 < len(tokens):
+            return tokens[index + 1]
+
+    return next((token for token in reversed(tokens) if not token.startswith("-")), "")
+
+
+def _git_subcommand(tokens: list[str]) -> str:
+    skip_next = False
+
+    for token in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+        if token in GIT_FLAGS_WITH_VALUE:
+            skip_next = True
+            continue
+        if not token.startswith("-"):
+            return token
+
+    return ""
 
 
 def _worst_of(segments: list[str], is_pipeline: bool = False) -> SafetyVerdict:

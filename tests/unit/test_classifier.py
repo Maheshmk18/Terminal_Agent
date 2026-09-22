@@ -105,6 +105,19 @@ def test_python_invocations_are_judged_by_their_module(command, expected):
     assert classify_command(command).risk is expected
 
 
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("git -C /repo status", RiskLevel.SAFE),
+        ("git --git-dir=.git log", RiskLevel.SAFE),
+        ("git -c user.name=x status", RiskLevel.SAFE),
+        ("git -C /repo push", RiskLevel.DANGEROUS),
+    ],
+)
+def test_git_flags_taking_a_value_do_not_hide_the_subcommand(command, expected):
+    assert classify_command(command).risk is expected
+
+
 def test_reasons_name_the_actual_action():
     assert "network" in classify_command("curl http://example.com").reason
     assert "packages" in classify_command("pip install rich").reason
