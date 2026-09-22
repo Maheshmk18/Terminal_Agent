@@ -79,7 +79,11 @@ def ask_approval(request: dict) -> bool:
         Panel(table, title="approval needed", border_style=RISK_STYLES.get(highest, "yellow"))
     )
 
-    return Confirm.ask("[bold]run it?[/bold]", default=False)
+    try:
+        return Confirm.ask("[bold]run it?[/bold]", default=False)
+    except (EOFError, KeyboardInterrupt):
+        console.print("[dim]declined[/dim]")
+        return False
 
 
 def _highest_risk(calls: list[dict]) -> str:

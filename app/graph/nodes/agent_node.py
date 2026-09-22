@@ -19,9 +19,15 @@ def build_agent_node(llm: BaseChatModel):
 
         if iterations >= limit:
             logger.warning("iteration_limit_reached", limit=limit)
+            summary = _summarise_progress(state["messages"])
             return {
                 "messages": [
-                    AIMessage(content=f"Stopping after {limit} steps without finishing the task.")
+                    AIMessage(
+                        content=(
+                            f"I stopped after {limit} steps without finishing.\n\n{summary}\n\n"
+                            "Try narrowing the request, or raise MAX_ITERATIONS in .env."
+                        )
+                    )
                 ],
                 "pending_calls": [],
             }
@@ -39,3 +45,18 @@ def build_agent_node(llm: BaseChatModel):
         }
 
     return agent_node
+
+
+def _summarise_progress(messages: list) -> str:
+    commands = [
+        call["args"]["command"]
+        for message in messages
+        for call in (getattr(message, "tool_calls", None) or [])
+        if "command" in call.get("args", {})
+    ]
+
+    if not commands:
+        return "No commands were run."
+
+    listed = "\n".join(f"  {command}" for command in commands[-5:])
+    return f"What I ran:\n{listed}"

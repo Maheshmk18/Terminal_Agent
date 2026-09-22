@@ -4,6 +4,9 @@ from pathlib import Path
 from app.safety.models import RiskLevel, SafetyVerdict
 from app.safety.rules import (
     DANGEROUS_COMMANDS,
+    INSTALL_COMMANDS,
+    NETWORK_COMMANDS,
+    PIPE_ONLY_COMMANDS,
     SAFE_COMMANDS,
     SAFE_GIT_SUBCOMMANDS,
     WRITE_COMMANDS,
@@ -13,6 +16,13 @@ from app.safety.rules import (
 )
 
 CHAIN_SEPARATORS = ("&&", "||", ";", "|")
+PIPE_SEPARATOR = "|"
+
+SHELL_WRAPPERS = frozenset({"powershell", "pwsh", "cmd", "bash", "sh", "zsh"})
+MAX_UNWRAP_DEPTH = 3
+
+PYTHON_RUNNERS = frozenset({"python", "python3", "py"})
+SAFE_PYTHON_MODULES = frozenset({"pytest", "ruff", "mypy", "json.tool"})
 
 READ_ONLY_TOOLS = frozenset({"read_file", "list_directory", "git_status", "git_diff", "git_log"})
 WRITE_TOOLS = frozenset({"write_file"})
@@ -36,7 +46,7 @@ def classify_tool_call(tool_name: str, arguments: dict) -> SafetyVerdict:
 
 
 def classify_command(command: str) -> SafetyVerdict:
-    command = command.strip()
+    command = _unwrap_shell(command.strip())
     if not command:
         return SafetyVerdict(RiskLevel.SAFE, "empty command")
 
@@ -45,17 +55,43 @@ def classify_command(command: str) -> SafetyVerdict:
 
     segments = _split_chain(command)
     if len(segments) > 1:
-        return _worst_of(segments)
+        return _worst_of(segments, _is_pipeline(command))
 
     return _classify_single(command)
 
 
+def _unwrap_shell(command: str) -> str:
+    for _ in range(MAX_UNWRAP_DEPTH):
+        tokens = _tokenize(command)
+        if not tokens or _base_name(tokens[0]) not in SHELL_WRAPPERS:
+            return command
+
+        inner = next(
+            (token for token in reversed(tokens[1:]) if not token.startswith("-")),
+            "",
+        )
+        if not inner:
+            return command
+
+        command = inner.strip("\"'")
+
+    return command
+
+
+def _is_pipeline(command: str) -> bool:
+    return PIPE_SEPARATOR in command and not any(
+        separator in command for separator in ("&&", "||", ";")
+    )
+
+
 def _classify_single(command: str) -> SafetyVerdict:
-    tokens = _tokenize(command)
+    tokens = _strip_call_operator(_tokenize(command))
     if not tokens:
         return SafetyVerdict(RiskLevel.CAUTION, "could not parse the command")
 
     name = _base_name(tokens[0])
+    if name in PYTHON_RUNNERS:
+        return _classify_python(tokens)
 
     if name in DANGEROUS_COMMANDS:
         if touches_protected_path(command):
@@ -68,13 +104,38 @@ def _classify_single(command: str) -> SafetyVerdict:
     if has_redirect(command):
         return SafetyVerdict(RiskLevel.CAUTION, "redirects output into a file")
 
-    if name in WRITE_COMMANDS:
-        return SafetyVerdict(RiskLevel.CAUTION, f"{name} modifies files or installs packages")
+    if name in NETWORK_COMMANDS:
+        return SafetyVerdict(RiskLevel.CAUTION, f"{name} sends a request over the network")
 
-    if name in SAFE_COMMANDS:
+    if name in INSTALL_COMMANDS:
+        return SafetyVerdict(RiskLevel.CAUTION, f"{name} installs or removes packages")
+
+    if name in WRITE_COMMANDS:
+        return SafetyVerdict(RiskLevel.CAUTION, f"{name} modifies files")
+
+    if name in SAFE_COMMANDS or name in PIPE_ONLY_COMMANDS:
         return SafetyVerdict(RiskLevel.SAFE, f"{name} only reads")
 
     return SafetyVerdict(RiskLevel.CAUTION, f"{name} is not a known read-only command")
+
+
+def _strip_call_operator(tokens: list[str]) -> list[str]:
+    return tokens[1:] if tokens and tokens[0] == "&" else tokens
+
+
+def _classify_python(tokens: list[str]) -> SafetyVerdict:
+    if "-c" in tokens or "-" in tokens[1:]:
+        return SafetyVerdict(RiskLevel.CAUTION, "runs python code given inline")
+
+    if "-m" in tokens:
+        module = _base_name(tokens[tokens.index("-m") + 1]) if len(tokens) > 2 else ""
+        if module in INSTALL_COMMANDS:
+            return SafetyVerdict(RiskLevel.CAUTION, f"{module} installs or removes packages")
+        if module in SAFE_PYTHON_MODULES:
+            return SafetyVerdict(RiskLevel.SAFE, f"python -m {module} only reads")
+        return SafetyVerdict(RiskLevel.CAUTION, f"runs the python module {module or 'given'}")
+
+    return SafetyVerdict(RiskLevel.CAUTION, "runs a python script")
 
 
 def _classify_git(tokens: list[str]) -> SafetyVerdict:
@@ -86,17 +147,18 @@ def _classify_git(tokens: list[str]) -> SafetyVerdict:
     return SafetyVerdict(RiskLevel.CAUTION, f"git {subcommand or 'command'} changes the repository")
 
 
-def _worst_of(segments: list[str]) -> SafetyVerdict:
+def _worst_of(segments: list[str], is_pipeline: bool = False) -> SafetyVerdict:
     verdicts = [_classify_single(segment) for segment in segments]
     order = [RiskLevel.BLOCKED, RiskLevel.DANGEROUS, RiskLevel.CAUTION, RiskLevel.SAFE]
+    label = "pipeline" if is_pipeline else "chained command"
 
     for level in order:
         if match := next((v for v in verdicts if v.risk is level), None):
             if level is RiskLevel.SAFE:
-                return SafetyVerdict(level, "all parts of the chain only read")
-            return SafetyVerdict(level, f"chained command: {match.reason}")
+                return SafetyVerdict(level, f"every part of the {label} only reads")
+            return SafetyVerdict(level, f"{label}: {match.reason}")
 
-    return SafetyVerdict(RiskLevel.CAUTION, "chained command")
+    return SafetyVerdict(RiskLevel.CAUTION, label)
 
 
 def _split_chain(command: str) -> list[str]:
