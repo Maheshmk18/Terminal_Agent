@@ -144,4 +144,6 @@ async def test_iteration_limit_stops_a_loop(graph_factory, monkeypatch):
         config("t7"),
     )
 
-    assert "Stopping after 3 steps" in result["messages"][-1].content
+    final = result["messages"][-1].content
+    assert "stopped after 3 steps" in final
+    assert "MAX_ITERATIONS" in final

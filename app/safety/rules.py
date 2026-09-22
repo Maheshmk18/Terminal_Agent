@@ -22,8 +22,23 @@ SAFE_COMMANDS = frozenset({
     "ls", "dir", "pwd", "cd", "cat", "type", "head", "tail", "less", "more",
     "grep", "select-string", "find", "findstr", "which", "where", "whoami",
     "echo", "date", "wc", "sort", "uniq", "diff", "tree", "du", "df", "stat",
-    "get-childitem", "get-content", "get-location", "test-path", "measure-object",
-    "python", "python3", "node", "pytest", "ruff",
+    "ps", "top", "uptime", "hostname", "uname", "env", "printenv", "id", "groups",
+    "netstat", "ss", "lsof", "ping", "nslookup", "dig", "ipconfig", "ifconfig",
+    "pytest", "ruff",
+    "get-childitem", "get-content", "get-location", "get-item", "get-itemproperty",
+    "get-process", "get-service", "get-date", "get-command", "get-help", "get-member",
+    "get-eventlog", "get-winevent", "get-hotfix", "get-volume", "get-psdrive",
+    "get-nettcpconnection", "get-netipaddress", "get-netadapter", "get-computerinfo",
+    "test-path", "test-netconnection", "test-connection", "resolve-path",
+    "write-output", "write-host", "out-string",
+    "measure-object", "compare-object", "convertto-json", "convertfrom-json",
+})
+
+PIPE_ONLY_COMMANDS = frozenset({
+    "format-table", "format-list", "format-wide", "format-custom",
+    "select-object", "sort-object", "where-object", "group-object", "foreach-object",
+    "measure-object", "out-string", "out-host", "out-gridview",
+    "head", "tail", "sort", "uniq", "wc", "less", "more", "column", "tr", "cut", "awk",
 })
 
 SAFE_GIT_SUBCOMMANDS = frozenset({
@@ -41,8 +56,16 @@ DANGEROUS_COMMANDS = frozenset({
 WRITE_COMMANDS = frozenset({
     "mkdir", "touch", "cp", "copy", "mv", "move", "rename", "ln", "tee",
     "new-item", "copy-item", "move-item", "rename-item", "set-content", "add-content",
-    "pip", "npm", "yarn", "apt", "apt-get", "brew", "choco", "winget", "conda",
-    "git", "docker", "make", "curl", "wget", "invoke-webrequest",
+    "git", "docker", "make",
+})
+
+INSTALL_COMMANDS = frozenset({
+    "pip", "pip3", "npm", "yarn", "pnpm", "apt", "apt-get", "brew", "choco",
+    "winget", "conda", "gem", "cargo",
+})
+
+NETWORK_COMMANDS = frozenset({
+    "curl", "wget", "invoke-webrequest", "iwr", "invoke-restmethod", "irm",
 })
 
 REDIRECT_PATTERN = re.compile(r"(?<![0-9])>{1,2}(?!&)")

@@ -18,8 +18,14 @@ Rules:
 - Write commands for {shell}, not for any other shell.
 - Never chain unrelated commands with && or ; in a single call, run them one at a time.
 - Do not invent file paths or command output, run a tool to find out.
-- Destructive commands need the user to approve them, so explain why one is needed.
 - If a command fails, read the error and try a different approach instead of repeating it.
+- Never run the same command twice, you already have its output above.
+
+Approval is handled for you:
+- Call the tool directly, never ask the user for permission in your reply.
+- The app shows the user any risky command and asks them before it runs.
+- A tool result saying the user denied it means they said no, so ask what they
+  would prefer instead of retrying.
 """
 
 

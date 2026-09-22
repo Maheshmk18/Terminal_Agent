@@ -1,9 +1,19 @@
 from uuid import uuid4
 
 from langchain_core.messages import HumanMessage
+from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 
+from app.config import get_settings
 from app.graph.interrupts import get_pending_interrupt
+
+NODES_PER_TURN = 3
+RECURSION_HEADROOM = 10
+
+STUCK_MESSAGE = (
+    "I could not finish this in the steps available. "
+    "Try a narrower request, or raise MAX_ITERATIONS in .env."
+)
 
 
 class AgentRuntime:
@@ -41,7 +51,17 @@ class AgentRuntime:
 
     async def _run(self, thread_id: str, payload) -> dict:
         config = self._config(thread_id)
-        result = await self._graph.ainvoke(payload, config)
+
+        try:
+            result = await self._graph.ainvoke(payload, config)
+        except GraphRecursionError:
+            return {
+                "thread_id": thread_id,
+                "reply": STUCK_MESSAGE,
+                "awaiting_approval": False,
+                "approval_request": None,
+            }
+
         interrupt = await get_pending_interrupt(self._graph, config)
 
         return {
@@ -54,9 +74,13 @@ class AgentRuntime:
     async def _stream(self, thread_id: str, payload):
         config = self._config(thread_id)
 
-        async for event in self._graph.astream_events(payload, config, version="v2"):
-            if token := self._token_from(event):
-                yield {"type": "token", "text": token}
+        try:
+            async for event in self._graph.astream_events(payload, config, version="v2"):
+                if token := self._token_from(event):
+                    yield {"type": "token", "text": token}
+        except GraphRecursionError:
+            yield {"type": "done", "reply": STUCK_MESSAGE}
+            return
 
         interrupt = await get_pending_interrupt(self._graph, config)
         if interrupt:
@@ -82,4 +106,8 @@ class AgentRuntime:
 
     @staticmethod
     def _config(thread_id: str) -> dict:
-        return {"configurable": {"thread_id": thread_id}}
+        limit = get_settings().max_iterations
+        return {
+            "configurable": {"thread_id": thread_id},
+            "recursion_limit": limit * NODES_PER_TURN + RECURSION_HEADROOM,
+        }
