@@ -9,7 +9,7 @@ from app.api.schemas import ErrorResponse
 from app.config import get_settings
 from app.core.exceptions import ConfigurationError, TerminalAgentError
 from app.core.logging import configure_logging, get_logger
-from app.graph.runtime import AgentRuntime
+from app.graph.runtime import NODES_PER_TURN, RECURSION_HEADROOM, AgentRuntime
 from app.graph.workflow import build_graph
 
 logger = get_logger(__name__)
@@ -24,6 +24,8 @@ async def lifespan(app: FastAPI):
         "starting",
         model=settings.llm_model,
         working_dir=str(settings.working_dir),
+        max_iterations=settings.max_iterations,
+        recursion_limit=settings.max_iterations * NODES_PER_TURN + RECURSION_HEADROOM,
     )
 
     app.state.runtime = _build_runtime()
