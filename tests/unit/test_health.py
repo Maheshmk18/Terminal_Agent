@@ -20,10 +20,11 @@ def test_health_returns_ok(client):
     assert response.json()["status"] == "ok"
 
 
-def test_ready_fails_without_api_key(client):
-    app = create_app()
-    app.dependency_overrides = {}
-    get_settings.cache_clear()
+def test_ready_fails_without_api_key(monkeypatch, client):
+    monkeypatch.setattr(
+        "app.api.routes.health.get_settings",
+        lambda: Settings(_env_file=None, GROQ_API_KEY=""),
+    )
 
     response = client.get("/ready")
     body = response.json()

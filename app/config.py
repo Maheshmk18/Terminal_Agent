@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
 
-    llm_model: str = Field(default="llama-3.3-70b-versatile", alias="LLM_MODEL")
+    llm_model: str = Field(default="openai/gpt-oss-120b", alias="LLM_MODEL")
     llm_temperature: float = Field(default=0.1, ge=0.0, le=2.0, alias="LLM_TEMPERATURE")
     llm_max_tokens: int = Field(default=2048, gt=0, alias="LLM_MAX_TOKENS")
 
