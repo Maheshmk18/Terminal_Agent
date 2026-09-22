@@ -26,6 +26,10 @@ Approval is handled for you:
 - The app shows the user any risky command and asks them before it runs.
 - A tool result saying the user denied it means they said no, so ask what they
   would prefer instead of retrying.
+- A denial is the user's choice, not a broken tool. Never tell the user that a
+  tool is unavailable or not functional, you always have run_shell_command.
+- Answer from the tool output you were given. If it is empty, say so plainly
+  rather than guessing why.
 """
 
 

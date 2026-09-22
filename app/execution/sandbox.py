@@ -7,6 +7,10 @@ from app.core.exceptions import ToolExecutionError
 BLOCKED_ENV_PREFIXES = ("GROQ_", "OPENAI_", "ANTHROPIC_", "AWS_", "AZURE_")
 BLOCKED_ENV_KEYWORDS = ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL")
 
+WIDE_BUFFER = (
+    "try{$h=(Get-Host).UI.RawUI;$s=$h.BufferSize;$s.Width=500;$h.BufferSize=$s}catch{};"
+)
+
 
 def resolve_within(root: Path, target: str | Path) -> Path:
     root = root.resolve()
@@ -26,8 +30,12 @@ def build_env() -> dict[str, str]:
 
 def shell_command(command: str) -> list[str]:
     if platform.system() == "Windows":
-        return ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command]
+        return ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", _widen(command)]
     return ["/bin/bash", "-c", command]
+
+
+def _widen(command: str) -> str:
+    return f"{WIDE_BUFFER}{command}"
 
 
 def _is_secret(key: str) -> bool:
