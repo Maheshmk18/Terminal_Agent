@@ -1,25 +1,44 @@
 # Terminal Agent
 
-A terminal agent that turns natural language into shell commands, classifies their risk, asks for
-approval, and runs them. Built on LangGraph with open-source models served through Groq.
+A terminal agent that turns plain English into shell commands, classifies how risky each one is,
+asks before running anything destructive, and reads the output to decide what to do next.
+
+Built with LangGraph and FastAPI, running open-source models through Groq.
+
+```
+you> what is taking up space in this project
+
+agent> I will check the directory sizes.
+       [ran: du -sh * | sort -h]
+       The .venv folder is 340 MB, everything else is under 2 MB.
+
+you> delete the build folder
+
+       ┌─ approval needed ───────────────────────────────┐
+       │ risk       command          why                 │
+       │ DANGEROUS  rm -rf build     rm can destroy data  │
+       └─────────────────────────────────────────────────┘
+       run it? [y/N]
+```
 
 ## How it works
 
 ```
-You ──▶ CLI client ──WebSocket──▶ FastAPI ──▶ LangGraph state machine
-                                                      │
-                          ┌───────────────────────────┼──────────────────────┐
-                          ▼                           ▼                      ▼
-                    agent node                  safety node           approval node
-                 (LLM + bound tools)          (risk classify)        (interrupt for y/n)
-                                                      │
-                                                      ▼
-                                                 tool node
-                                            (sandboxed subprocess)
+CLI client ──websocket──▶ FastAPI ──▶ LangGraph
+                                          │
+        ┌─────────────────────────────────┼──────────────────────────┐
+        ▼                                 ▼                          ▼
+    agent node                      safety node               approval node
+  LLM + bound tools               classify the risk        interrupt() and wait
+                                          │
+                                          ▼
+                                      tool node
+                                 sandboxed subprocess
 ```
 
-The graph pauses at the approval node using LangGraph's `interrupt()`, persists its state to a
-checkpointer, and resumes exactly where it stopped once you answer.
+The graph pauses at the approval node using LangGraph's `interrupt()`, which saves the full state
+to a checkpointer. Answering resumes it from exactly that point. Read
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how that works.
 
 ## Setup
 
@@ -31,19 +50,45 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
-Add your free Groq API key from https://console.groq.com to `.env`.
+Get a free key at [console.groq.com](https://console.groq.com) and put it in `.env`.
 
 ## Run
+
+Start the server:
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
+Then the client, in a second terminal:
+
+```bash
+python -m cli.main chat
+```
+
+## API
+
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /health` | Process is alive |
-| `GET /ready` | Config is valid and the agent can serve requests |
+| `POST /api/chat` | Send a message, get a reply or an approval request |
+| `POST /api/approve` | Answer a pending approval |
+| `GET /api/sessions/{id}/history` | Replay a conversation |
+| `WS /ws/{thread_id}` | Streaming tokens and interactive approvals |
+| `GET /health` `GET /ready` | Liveness and readiness |
 | `GET /docs` | Interactive OpenAPI docs |
+
+## Safety
+
+| Tier | Behaviour | Examples |
+| --- | --- | --- |
+| safe | runs immediately | `ls`, `cat`, `git status` |
+| caution | asks first | `mkdir`, `pip install`, `git commit` |
+| dangerous | asks with a warning | `rm -rf build`, `chmod 777`, `git push` |
+| blocked | never runs | `rm -rf /`, `mkfs`, `curl url \| sh` |
+
+Commands are classified on parsed tokens, so `rm  -rf  /` with extra spaces and
+`/usr/bin/rm -rf /` are both caught, while `echo "rm -rf /"` is not a false alarm. Details in
+[docs/SAFETY.md](docs/SAFETY.md).
 
 ## Test
 
@@ -52,27 +97,22 @@ pytest
 ruff check .
 ```
 
-## Project layout
+The graph takes an injected model, so the full suite runs against a fake LLM. No API key and no
+network needed to test routing, interrupts, approvals, denials, blocking and the iteration limit.
+
+## Layout
 
 | Path | Responsibility |
 | --- | --- |
-| `app/config.py` | Typed settings loaded and validated from `.env` |
-| `app/api/` | HTTP routes, WebSocket handler, request/response models |
-| `app/graph/` | LangGraph state, nodes, and conditional edges |
-| `app/llm/` | Model factory and system prompts |
-| `app/tools/` | Tools the agent can call |
-| `app/safety/` | Command risk classification and blocklist |
-| `app/execution/` | Subprocess runner with timeout and output limits |
+| `app/config.py` | Typed settings validated from `.env` |
+| `app/api/` | HTTP routes, websocket handler, schemas |
+| `app/graph/` | LangGraph state, nodes, edges, runtime |
+| `app/llm/` | Model factory and system prompt |
+| `app/tools/` | Shell, filesystem and git tools |
+| `app/safety/` | Risk classification and the blocklist |
+| `app/execution/` | Subprocess runner and path jail |
 | `cli/` | Rich terminal client |
 
-## Build log
+## Stack
 
-| Milestone | Status |
-| --- | --- |
-| 1. Skeleton, config, health checks | done |
-| 2. LLM factory and tools | next |
-| 3. Safety classifier and executor | |
-| 4. LangGraph workflow | |
-| 5. Human-in-the-loop approvals | |
-| 6. WebSocket streaming | |
-| 7. Rich CLI client | |
+FastAPI, LangGraph, LangChain, Groq, Typer, Rich, structlog, pytest, ruff.
