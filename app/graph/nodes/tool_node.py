@@ -26,7 +26,7 @@ async def _resolve(call, approved: set[str]) -> str:
         logger.warning("blocked_call", tool=call.tool_name, reason=call.verdict.reason)
         return f"Blocked: {call.verdict.reason}. Suggest a safer approach."
 
-    if call.call_id not in approved:
+    if call.verdict.risk.needs_approval and call.call_id not in approved:
         logger.info("call_denied", tool=call.tool_name)
         return "The user denied this command. Ask what they would prefer instead."
 

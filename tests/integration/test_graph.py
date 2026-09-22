@@ -49,6 +49,8 @@ async def test_safe_tool_runs_without_approval(graph_factory):
     cfg = config("t2")
     result = await graph.ainvoke({"messages": [HumanMessage(content="list files")]}, cfg)
 
+    tool_message = next(m for m in result["messages"] if m.type == "tool")
+    assert "denied" not in tool_message.content.lower()
     assert result["messages"][-1].content == "Listed the directory"
     assert await get_pending_interrupt(graph, cfg) is None
 
