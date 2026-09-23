@@ -7,7 +7,7 @@ from app.config import Settings
 def test_defaults_apply_when_env_is_empty():
     settings = Settings(_env_file=None)
 
-    assert settings.llm_model == "llama-3.3-70b-versatile"
+    assert settings.llm_model == "openai/gpt-oss-120b"
     assert settings.max_iterations == 10
     assert settings.app_port == 8000
 

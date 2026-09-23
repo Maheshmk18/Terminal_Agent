@@ -3,11 +3,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api.routes import health
+from app.api import websocket
+from app.api.routes import chat, health, session
 from app.api.schemas import ErrorResponse
 from app.config import get_settings
-from app.core.exceptions import TerminalAgentError
+from app.core.exceptions import ConfigurationError, TerminalAgentError
 from app.core.logging import configure_logging, get_logger
+from app.graph.runtime import NODES_PER_TURN, RECURSION_HEADROOM, AgentRuntime
+from app.graph.workflow import build_graph
 
 logger = get_logger(__name__)
 
@@ -21,15 +24,23 @@ async def lifespan(app: FastAPI):
         "starting",
         model=settings.llm_model,
         working_dir=str(settings.working_dir),
-        api_key_set=settings.has_api_key,
+        max_iterations=settings.max_iterations,
+        recursion_limit=settings.max_iterations * NODES_PER_TURN + RECURSION_HEADROOM,
     )
 
-    if not settings.has_api_key:
-        logger.warning("groq_api_key_missing", hint="agent routes will fail until set")
+    app.state.runtime = _build_runtime()
 
     yield
 
     logger.info("shutting down")
+
+
+def _build_runtime() -> AgentRuntime | None:
+    try:
+        return AgentRuntime(build_graph())
+    except ConfigurationError as error:
+        logger.warning("agent_unavailable", reason=str(error))
+        return None
 
 
 def create_app() -> FastAPI:
@@ -44,6 +55,9 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(chat.router)
+    app.include_router(session.router)
+    app.include_router(websocket.router)
 
     @app.exception_handler(TerminalAgentError)
     async def handle_agent_error(request: Request, exc: TerminalAgentError) -> JSONResponse:
