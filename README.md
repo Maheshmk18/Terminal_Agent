@@ -31,7 +31,6 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
-Add your free Groq API key from https://console.groq.com to `.env`.
 
 ## Run
 
