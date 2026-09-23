@@ -39,11 +39,7 @@ Add your free Groq API key from https://console.groq.com to `.env`.
 uvicorn app.main:app --reload
 ```
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /health` | Process is alive |
-| `GET /ready` | Config is valid and the agent can serve requests |
-| `GET /docs` | Interactive OpenAPI docs |
+
 
 ## Test
 
@@ -65,14 +61,3 @@ ruff check .
 | `app/execution/` | Subprocess runner with timeout and output limits |
 | `cli/` | Rich terminal client |
 
-## Build log
-
-| Milestone | Status |
-| --- | --- |
-| 1. Skeleton, config, health checks | done |
-| 2. LLM factory and tools | next |
-| 3. Safety classifier and executor | |
-| 4. LangGraph workflow | |
-| 5. Human-in-the-loop approvals | |
-| 6. WebSocket streaming | |
-| 7. Rich CLI client | |
